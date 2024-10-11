@@ -7,7 +7,8 @@ class adminController {
             title: req.body.title,
             price: req.body.price,
             imageUrl: req.body.imageUrl,
-            description: req.body.description
+            description: req.body.description,
+            userId: req.user.id
         })
         res.status(201).json({
             message: 'Product is added!',
