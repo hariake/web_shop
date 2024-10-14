@@ -1,5 +1,10 @@
 const Product = require('../models/product')
 const Cart = require('../models/cart')
+const Order = require('../models/order');
+const OrderItem = require('../models/order-item');
+const CartItem = require('../models/cart-item'); 
+const User = require('../models/user.js');
+
 
 class shopController {
 
@@ -45,7 +50,7 @@ class shopController {
                 // const newCartItem = await userCart.createCartItem({ productId: productId, quantity: quantity });
                 const newProduct = await Product.findByPk(productId)
                 console.log('toode', newProduct)
-                const newCartItem = await userCart.addProduct(newProduct, {through: { quantity: quantity }});
+                const newCartItem = await userCart.addProduct(newProduct, {through: { quantity: quantity}});
                 console.log('uus toode kaardil', newCartItem)
                 return res.status(201).json({ message: 'Item added to cart', cartItem: newCartItem });
             }
@@ -80,7 +85,81 @@ class shopController {
             console.error(error);
             return res.status(500).json({ error: 'An error occurred while removing the item from the cart.' });
         }
-    }   
+    } 
+    async createOrder(req, res) {
+        const userId = req.user.id; // Assuming user info is available in req.user
+        const userCart = await req.user.getCart();
+        const cartItems = await userCart.getProducts({
+            attributes: ['id'], // Fetch only product IDs
+            through: {
+                attributes: ['quantity'] // Fetch quantities from CartItem
+            }
+        });
+    
+        if (!cartItems.length) {
+            return res.status(400).json({ error: 'Cart is empty.' });
+        }
+    
+        try {
+            // Prepare order items from cart items
+            const orderItems = cartItems.map(cartItem => {
+                // Access quantity through the `CartItem` association
+                const quantity = cartItem.CartItem ? cartItem.CartItem.quantity : 0; // Fallback to 0 if undefined
+    
+                return {
+                    productId: cartItem.id, // Product ID
+                    quantity: quantity // Quantity from CartItem
+                };
+            });
+    
+            // Create the order
+            const order = await Order.create({ userId });
+    
+            // Create order items
+            for (const item of orderItems) {
+                await OrderItem.create({ orderId: order.id, ...item });
+            }
+    
+            // Optionally: Clear the cart if you want to reset it
+            // await userCart.setProducts([]);
+    
+            return res.status(201).json({ message: 'Order created successfully', order });
+        } catch (error) {
+            console.error(error);
+            return res.status(500).json({ error: 'An error occurred while creating the order.' });
+        }
+    }
+    
+    
+    async getUserOrders(req, res) {
+        const userId = req.user.id; // Get the user ID from the request
+    
+        try {
+            const orders = await Order.findAll({
+                where: { userId },
+                include: [
+                    {
+                        model: OrderItem, // Correct model name
+                        include: [
+                            {
+                                model: Product,
+                                attributes: ['id', 'name'] // Specify the attributes you want
+                            }
+                        ]
+                    }
+                ],
+                order: [['createdAt', 'DESC']] // Order by creation date
+            });
+    
+            return res.status(200).json({ orders });
+        } catch (error) {
+            console.error(error);
+            return res.status(500).json({ error: 'An error occurred while retrieving orders.' });
+        }
+    }
+    
+    
+    
 } 
 
 module.exports = new shopController()
